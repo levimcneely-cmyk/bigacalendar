@@ -382,13 +382,14 @@ function renderSummary() {
   const el = $('summary');
   if (state.view !== 'activity' || !state.data) { el.innerHTML = ''; return; }
   const pre = state.year + '-';
-  const days = new Set(), counts = {};
-  let mins = 0;
+  const days = new Set(), mi = { Bike: 0, Run: 0 };
   (state.data.workouts || []).forEach(w => {
     if (!String(w.date).startsWith(pre)) return;
-    days.add(w.date); counts[w.type] = (counts[w.type] || 0) + 1; mins += Number(w.min) || 0;
+    days.add(w.date);
+    if (w.type in mi) mi[w.type] += Number(w.mi) || 0;
   });
-  el.innerHTML = `Active days <b>${days.size}</b>&ensp;Total <b>${Math.round(mins / 60)} hr</b>`;
+  const n = x => Math.round(x).toLocaleString();
+  el.innerHTML = `Bike miles <b>${n(mi.Bike)}</b>&ensp;Run miles <b>${n(mi.Run)}</b>&ensp;Active days <b>${days.size}</b>`;
 }
 
 /* ---------- day sheet ---------- */
