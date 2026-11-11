@@ -388,8 +388,7 @@ function renderSummary() {
     if (!String(w.date).startsWith(pre)) return;
     days.add(w.date); counts[w.type] = (counts[w.type] || 0) + 1; mins += Number(w.min) || 0;
   });
-  const parts = groupCats('workout').map(c => `${esc(c.name)} <b>${counts[c.name] || 0}</b>`);
-  el.innerHTML = `Active days <b>${days.size}</b>&ensp;Total <b>${Math.round(mins / 60)} hr</b>&ensp;` + parts.join('&ensp;');
+  el.innerHTML = `Active days <b>${days.size}</b>&ensp;Total <b>${Math.round(mins / 60)} hr</b>`;
 }
 
 /* ---------- day sheet ---------- */
