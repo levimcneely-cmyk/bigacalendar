@@ -53,6 +53,12 @@ button{font:inherit;color:inherit}
 .grid{display:grid;gap:3px;text-transform:uppercase}
 .grid.portrait{grid-template-columns:30px repeat(7,minmax(0,1fr))}
 .grid.landscape{grid-template-columns:30px repeat(var(--wks),minmax(0,1fr));min-width:900px}
+.desk .seg,.desk #legend,.desk #summary{display:none}
+.sec+.sec{margin-top:32px}
+.sec-head{display:flex;align-items:center;flex-wrap:wrap;gap:6px 16px;margin:0 0 12px 33px}
+.sec-head h2{margin:0;font-size:22px;font-weight:800}
+.sec-head .legend,.sec-head .summary,.sec-head .heat{margin:0}
+.sec-head .heat .cap{flex-basis:auto;margin:0 0 0 8px}
 .wrap.landscape{overflow-x:auto;padding:16px 20px}
 
 .hd{font-size:12px;font-weight:600;color:var(--muted);display:flex;align-items:center;white-space:nowrap}
@@ -154,7 +160,7 @@ button{font:inherit;color:inherit}
   <div class="status" id="status"></div>
 </header>
 
-<main class="wrap" id="wrap"><div class="grid" id="grid"></div></main>
+<main class="wrap" id="wrap"></main>
 
 <button class="fab" id="fab" aria-label="Add to outlook">+</button>
 
@@ -210,7 +216,7 @@ async function load() {
     const j = await r.json();
     if (!j.ok) {
       if (j.error === 'unauthorized') {
-        lsDel(LS.key); lsDel(LS.cache); state.data = null; $('grid').innerHTML = '';
+        lsDel(LS.key); lsDel(LS.cache); state.data = null; $('wrap').innerHTML = '';
         return showGate('That passcode didn\u2019t match. Try again.');
       }
       throw new Error(j.error || 'Unknown error');
@@ -284,31 +290,15 @@ function monthStarting(week, y) {
   return d ? d.getMonth() : -1;
 }
 
-function render() {
-  $('yr').textContent = state.year;
-  $('v-outlook').setAttribute('aria-pressed', state.view === 'outlook');
-  $('v-activity').setAttribute('aria-pressed', state.view === 'activity');
-  renderLegend();
-  renderSummary();
-
-  const land = isLandscape();
-  const grid = $('grid');
-  const y = state.year;
-  const weeks = yearWeeks(y);
-  grid.className = 'grid ' + (land ? 'landscape' : 'portrait');
-  grid.style.setProperty('--wks', weeks.length);
-  $('wrap').className = 'wrap ' + (land ? 'landscape' : 'portrait');
-  const t = new Date();
-  const todayK = ymd(t.getFullYear(), t.getMonth(), t.getDate());
-  let h = '';
-
+function gridHTML(view, land, weeks, y, todayK) {
+  let h = `<div class="grid ${land ? 'landscape' : 'portrait'}" style="--wks:${weeks.length}">`;
   if (land) {
     // month label row, then one row per weekday (GitHub layout)
     h += '<div class="hd"></div>';
     weeks.forEach(w => { const m = monthStarting(w, y); h += `<div class="hd mo">${m >= 0 ? MON3[m] : ''}</div>`; });
     for (let dow = 0; dow < 7; dow++) {
       h += `<div class="hd dow${dow === 0 || dow === 6 ? ' wk' : ''}">${dow % 2 ? DOW3[dow] : ''}</div>`;
-      weeks.forEach(w => { h += cell(w[dow], y, todayK, false); });
+      weeks.forEach(w => { h += cell(w[dow], y, todayK, false, view); });
     }
   } else {
     // weekday header row, then one row per week (vertical on phone)
@@ -317,10 +307,39 @@ function render() {
     weeks.forEach(w => {
       const m = monthStarting(w, y);
       h += `<div class="hd mo">${m >= 0 ? MON3[m] : ''}</div>`;
-      w.forEach(d => { h += cell(d, y, todayK, true); });
+      w.forEach(d => { h += cell(d, y, todayK, true, view); });
     });
   }
-  grid.innerHTML = h;
+  return h + '</div>';
+}
+
+function render() {
+  $('yr').textContent = state.year;
+  $('v-outlook').setAttribute('aria-pressed', state.view === 'outlook');
+  $('v-activity').setAttribute('aria-pressed', state.view === 'activity');
+
+  const land = isLandscape();
+  document.body.classList.toggle('desk', land);
+  const y = state.year;
+  const weeks = yearWeeks(y);
+  const t = new Date();
+  const todayK = ymd(t.getFullYear(), t.getMonth(), t.getDate());
+  const wrap = $('wrap');
+  wrap.className = 'wrap ' + (land ? 'landscape' : 'portrait');
+
+  if (land) {
+    // desktop: both calendars stacked, no toggle
+    $('legend').innerHTML = ''; $('summary').innerHTML = '';
+    wrap.innerHTML =
+      `<section class="sec"><div class="sec-head"><h2>Outlook</h2><div class="legend">${legendHTML('outlook')}</div></div>` +
+      gridHTML('outlook', true, weeks, y, todayK) + '</section>' +
+      `<section class="sec"><div class="sec-head"><h2>Activity</h2><div class="summary">${summaryHTML()}</div>${legendHTML('activity')}</div>` +
+      gridHTML('activity', true, weeks, y, todayK) + '</section>';
+  } else {
+    $('legend').innerHTML = legendHTML(state.view);
+    $('summary').innerHTML = state.view === 'activity' ? summaryHTML() : '';
+    wrap.innerHTML = gridHTML(state.view, false, weeks, y, todayK);
+  }
   document.documentElement.style.setProperty('--bar-h', $('bar').offsetHeight + 'px');
 
   if (!land && !scrolledToToday && state.data && t.getFullYear() === y) {
@@ -330,14 +349,14 @@ function render() {
   }
 }
 
-function cell(dt, y, todayK, showText) {
+function cell(dt, y, todayK, showText, view) {
   if (dt.getFullYear() !== y) return '<div class="d void" aria-hidden="true"></div>';
   const m = dt.getMonth(), d = dt.getDate(), dow = dt.getDay();
   const k = ymd(y, m, d);
   const o = I.idx[k] || { ev: [], brk: [], wo: [] };
   let cls = 'd', style = '', label = '', tip;
 
-  if (state.view === 'outlook') {
+  if (view === 'outlook') {
     const colors = o.ev.map(e => catColor(e.category));
     label = [...new Set(o.ev.map(e => e.label).filter(Boolean))].join(' / ');
     if (colors.length) style = ` style="background:${splitBg(colors)}"`;
@@ -369,18 +388,14 @@ function groupCats(group) {
   return Object.values(I.cats).filter(c => c.group.toLowerCase() === group).sort((a, b) => a.order - b.order);
 }
 
-function renderLegend() {
-  if (state.view === 'outlook') {
-    $('legend').innerHTML = groupCats('event').map(c => `<span class="chip" style="background:${esc(c.color)}">${esc(c.name)}</span>`).join('');
-  } else {
-    $('legend').innerHTML = `<div class="heat">Less <i title="No workouts"></i><i class="h1" title="Under 30 min"></i><i class="h2" title="30 to 60 min"></i><i class="h3" title="1 to 2 hr"></i><i class="h4" title="2 hr or more"></i> More
-      <span class="cap">Shaded by total workout time per day: under 30 min, 30–60 min, 1–2 hr, 2 hr+</span></div>`;
-  }
+function legendHTML(view) {
+  if (view === 'outlook') return groupCats('event').map(c => `<span class="chip" style="background:${esc(c.color)}">${esc(c.name)}</span>`).join('');
+  return `<div class="heat">Less <i title="No workouts"></i><i class="h1" title="Under 30 min"></i><i class="h2" title="30 to 60 min"></i><i class="h3" title="1 to 2 hr"></i><i class="h4" title="2 hr or more"></i> More
+    <span class="cap">Shaded by total workout time per day: under 30 min, 30–60 min, 1–2 hr, 2 hr+</span></div>`;
 }
 
-function renderSummary() {
-  const el = $('summary');
-  if (state.view !== 'activity' || !state.data) { el.innerHTML = ''; return; }
+function summaryHTML() {
+  if (!state.data) return '';
   const pre = state.year + '-';
   const days = new Set(), mi = { Bike: 0, Run: 0 };
   (state.data.workouts || []).forEach(w => {
@@ -389,7 +404,7 @@ function renderSummary() {
     if (w.type in mi) mi[w.type] += Number(w.mi) || 0;
   });
   const n = x => Math.round(x).toLocaleString();
-  el.innerHTML = `Bike miles <b>${n(mi.Bike)}</b>&ensp;Run miles <b>${n(mi.Run)}</b>&ensp;Active days <b>${days.size}</b>`;
+  return `Bike miles <b>${n(mi.Bike)}</b>&ensp;Run miles <b>${n(mi.Run)}</b>&ensp;Active days <b>${days.size}</b>`;
 }
 
 /* ---------- day sheet ---------- */
@@ -438,7 +453,7 @@ function openDay(k) {
   $('sheet-body').innerHTML = h;
   $('scrim').classList.add('on'); $('sheet').classList.add('on');
   document.querySelectorAll('.d.sel').forEach(n => n.classList.remove('sel'));
-  const n = document.querySelector(`.d[data-k="${k}"]`); if (n) n.classList.add('sel');
+  document.querySelectorAll(`.d[data-k="${k}"]`).forEach(n => n.classList.add('sel'));
 }
 
 function closeDay() {
@@ -544,8 +559,8 @@ $('v-outlook').onclick = () => { state.view = 'outlook'; render(); };
 $('v-activity').onclick = () => { state.view = 'activity'; render(); };
 $('scrim').onclick = closeDay;
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeDay(); });
-$('grid').addEventListener('click', e => { const c = e.target.closest('.d[data-k]'); if (c) openDay(c.dataset.k); });
-$('grid').addEventListener('keydown', e => {
+$('wrap').addEventListener('click', e => { const c = e.target.closest('.d[data-k]'); if (c) openDay(c.dataset.k); });
+$('wrap').addEventListener('keydown', e => {
   if (e.key !== 'Enter' && e.key !== ' ') return;
   const c = e.target.closest('.d[data-k]'); if (c) { e.preventDefault(); openDay(c.dataset.k); }
 });
