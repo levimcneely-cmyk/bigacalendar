@@ -48,33 +48,42 @@ button{font:inherit;color:inherit}
 .status{font-size:12px;color:var(--muted);margin-top:4px;min-height:0}
 .status:empty{display:none}
 
-/* ---------- grid ---------- */
-.wrap{padding:8px 6px}
-.grid{display:grid;gap:1px;background:var(--line);border:2px solid var(--line)}
-.grid.portrait{grid-template-columns:repeat(12,minmax(0,1fr));
-  --fh:clamp(7px,2.05vw,13px);--fb:clamp(7px,2vw,12.5px)}
-.grid.landscape{grid-template-columns:52px repeat(31,minmax(40px,1fr));min-width:1350px;
-  --fh:11.5px;--fb:11.5px}
-.wrap.landscape{overflow-x:auto}
+/* ---------- grid (weeks x weekdays) ---------- */
+.wrap{padding:10px 8px}
+.grid{display:grid;gap:3px}
+.grid.portrait{grid-template-columns:30px repeat(7,minmax(0,1fr))}
+.grid.landscape{grid-template-columns:30px repeat(var(--wks),minmax(0,1fr));min-width:900px}
+.wrap.landscape{overflow-x:auto;padding:16px 20px}
 
-.mh{background:var(--cell);font-weight:800;text-align:center;display:flex;align-items:center;justify-content:center}
-.portrait .mh{position:sticky;top:var(--bar-h);z-index:5;font-size:clamp(9px,2.9vw,16px);padding:6px 0;border-bottom:2px solid var(--line)}
-.landscape .mh{font-size:14px}
-.landscape .dn{background:var(--cell);text-align:center;font-weight:700;font-size:12px;padding:4px 0;color:var(--muted)}
-.corner{background:var(--bg)}
+.hd{font-size:12px;font-weight:600;color:var(--muted);display:flex;align-items:center;white-space:nowrap}
+.portrait .hd.dow{justify-content:center;position:sticky;top:var(--bar-h);z-index:5;background:var(--bg);padding:6px 0}
+.portrait .hd.dow span{padding:1px 7px;border-radius:4px}
+.portrait .hd.dow.wk span{background:var(--wkend);color:#fff}
+.portrait .hd.corner{position:sticky;top:var(--bar-h);z-index:5;background:var(--bg)}
+.portrait .hd.mo{font-size:12px;font-weight:800;color:var(--ink);align-items:flex-start;padding-top:3px}
+.landscape .hd.mo{font-size:13px;overflow:visible;padding-bottom:2px}
+.landscape .hd.dow{font-size:11px}
+.landscape .hd.dow.wk{color:#d0d0d0}
 
-.d{background:var(--cell);display:flex;flex-direction:column;min-width:0;cursor:pointer;position:relative}
-.d.void{background:var(--bg);cursor:default}
-.dh{display:flex;justify-content:space-between;align-items:baseline;gap:2px;
-  font-size:var(--fh);font-weight:600;padding:1px 3px;line-height:1.35;white-space:nowrap;overflow:hidden}
-.dh.wk{background:var(--wkend)}
-.dh.brk{background:var(--brk)}
-.db{height:calc(var(--fb) * 1.9);display:flex;align-items:center;justify-content:center;
-  font-size:var(--fb);font-weight:600;padding:0 2px;color:#fff;text-shadow:0 1px 1px rgba(0,0,0,.5);
-  overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
-.db span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
-.d.today{outline:2px solid var(--today);outline-offset:-2px;z-index:2}
-.d.sel{outline:2px dashed var(--today);outline-offset:-2px;z-index:3}
+.d{background:var(--cell);border-radius:4px;position:relative;min-width:0;cursor:pointer;overflow:hidden}
+.portrait .d{height:40px}
+.landscape .d{aspect-ratio:1}
+.d.void{background:transparent;cursor:default}
+.d.wk{background:#3f3f3f}
+.d.brk::after{content:"";position:absolute;inset:0;border-radius:inherit;box-shadow:inset 0 0 0 2px var(--brk);pointer-events:none}
+.d .n{position:absolute;top:2px;left:4px;font-size:10px;font-weight:600;line-height:1;color:rgba(255,255,255,.55)}
+.d .n.first{color:#fff;font-weight:800}
+.d .l{position:absolute;left:2px;right:2px;bottom:4px;text-align:center;font-size:10.5px;font-weight:700;line-height:1.1;
+  color:#fff;text-shadow:0 1px 1px rgba(0,0,0,.6);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.d.today{outline:2px solid var(--today);outline-offset:1px;z-index:2;overflow:visible}
+.d.sel{outline:2px dashed var(--today);outline-offset:1px;z-index:3;overflow:visible}
+
+/* heatmap levels (activity view) */
+.d.h1{background:#0e4429}.d.h2{background:#006d32}.d.h3{background:#26a641}.d.h4{background:#39d353}
+.heat{display:flex;align-items:center;gap:4px;margin-top:8px;font-size:12px;color:var(--muted);flex-wrap:wrap}
+.heat i{width:13px;height:13px;border-radius:3px;display:inline-block;background:var(--cell)}
+.heat i.h1{background:#0e4429}.heat i.h2{background:#006d32}.heat i.h3{background:#26a641}.heat i.h4{background:#39d353}
+.heat .cap{flex-basis:100%;margin-top:2px}
 
 /* ---------- day sheet ---------- */
 .scrim{position:fixed;inset:0;background:rgba(0,0,0,.55);opacity:0;pointer-events:none;transition:opacity .2s;z-index:40}
@@ -245,6 +254,35 @@ function splitBg(colors) {
 
 /* ---------- render ---------- */
 const isLandscape = () => window.matchMedia('(min-width: 900px)').matches;
+const MON3 = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const HEAT = [30, 60, 120]; // minute thresholds: <30, 30-59, 60-119, 120+
+let scrolledToToday = false;
+
+function dayMinutes(o) { return o.wo.reduce((s, w) => s + (Number(w.min) || 0), 0); }
+function heatLevel(o) {
+  if (!o.wo.length) return 0;
+  const m = dayMinutes(o);
+  return m < HEAT[0] ? 1 : m < HEAT[1] ? 2 : m < HEAT[2] ? 3 : 4;
+}
+
+/** Weeks (Sun-Sat) covering the year; each week is 7 Date objects. */
+function yearWeeks(y) {
+  const start = new Date(y, 0, 1); start.setDate(1 - start.getDay());
+  const end = new Date(y, 11, 31); end.setDate(31 + (6 - end.getDay()));
+  const weeks = [];
+  for (const d = new Date(start); d <= end; ) {
+    const w = [];
+    for (let i = 0; i < 7; i++) { w.push(new Date(d)); d.setDate(d.getDate() + 1); }
+    weeks.push(w);
+  }
+  return weeks;
+}
+
+/** Month whose 1st falls in this week (and in the year), or -1. */
+function monthStarting(week, y) {
+  const d = week.find(x => x.getDate() === 1 && x.getFullYear() === y);
+  return d ? d.getMonth() : -1;
+}
 
 function render() {
   $('yr').textContent = state.year;
@@ -255,47 +293,76 @@ function render() {
 
   const land = isLandscape();
   const grid = $('grid');
-  grid.className = 'grid ' + (land ? 'landscape' : 'portrait');
-  $('wrap').className = 'wrap ' + (land ? 'landscape' : 'portrait');
-  const narrow = !land && window.innerWidth < 560;
-  const todayK = (() => { const t = new Date(); return ymd(t.getFullYear(), t.getMonth(), t.getDate()); })();
   const y = state.year;
+  const weeks = yearWeeks(y);
+  grid.className = 'grid ' + (land ? 'landscape' : 'portrait');
+  grid.style.setProperty('--wks', weeks.length);
+  $('wrap').className = 'wrap ' + (land ? 'landscape' : 'portrait');
+  const t = new Date();
+  const todayK = ymd(t.getFullYear(), t.getMonth(), t.getDate());
   let h = '';
 
   if (land) {
-    h += '<div class="corner"></div>';
-    for (let d = 1; d <= 31; d++) h += `<div class="dn">${d}</div>`;
-    for (let m = 0; m < 12; m++) {
-      h += `<div class="mh">${MONTHS[m]}</div>`;
-      for (let d = 1; d <= 31; d++) h += cell(y, m, d, false, todayK);
+    // month label row, then one row per weekday (GitHub layout)
+    h += '<div class="hd"></div>';
+    weeks.forEach(w => { const m = monthStarting(w, y); h += `<div class="hd mo">${m >= 0 ? MON3[m] : ''}</div>`; });
+    for (let dow = 0; dow < 7; dow++) {
+      h += `<div class="hd dow${dow === 0 || dow === 6 ? ' wk' : ''}">${dow % 2 ? DOW3[dow] : ''}</div>`;
+      weeks.forEach(w => { h += cell(w[dow], y, todayK, false); });
     }
   } else {
-    for (let m = 0; m < 12; m++) h += `<div class="mh">${MONTHS[m]}</div>`;
-    for (let d = 1; d <= 31; d++) for (let m = 0; m < 12; m++) h += cell(y, m, d, narrow, todayK);
+    // weekday header row, then one row per week (vertical on phone)
+    h += '<div class="hd corner"></div>';
+    for (let dow = 0; dow < 7; dow++) h += `<div class="hd dow${dow === 0 || dow === 6 ? ' wk' : ''}"><span>${DOW2[dow]}</span></div>`;
+    weeks.forEach(w => {
+      const m = monthStarting(w, y);
+      h += `<div class="hd mo">${m >= 0 ? MON3[m] : ''}</div>`;
+      w.forEach(d => { h += cell(d, y, todayK, true); });
+    });
   }
   grid.innerHTML = h;
   document.documentElement.style.setProperty('--bar-h', $('bar').offsetHeight + 'px');
+
+  if (!land && !scrolledToToday && state.data && t.getFullYear() === y) {
+    scrolledToToday = true;
+    const el = document.querySelector('.d.today');
+    if (el) el.scrollIntoView({ block: 'center' });
+  }
 }
 
-function cell(y, m, d, narrow, todayK) {
-  const dt = new Date(y, m, d);
-  if (dt.getMonth() !== m) return '<div class="d void" aria-hidden="true"></div>';
+function cell(dt, y, todayK, showText) {
+  if (dt.getFullYear() !== y) return '<div class="d void" aria-hidden="true"></div>';
+  const m = dt.getMonth(), d = dt.getDate(), dow = dt.getDay();
   const k = ymd(y, m, d);
   const o = I.idx[k] || { ev: [], brk: [], wo: [] };
-  const dow = dt.getDay();
-  const hc = (dow === 0 || dow === 6) ? 'wk' : (o.brk.length ? 'brk' : '');
-  let bg = '', label = '';
+  let cls = 'd', style = '', label = '', tip;
+
   if (state.view === 'outlook') {
-    bg = splitBg(o.ev.map(e => catColor(e.category)));
+    const colors = o.ev.map(e => catColor(e.category));
     label = [...new Set(o.ev.map(e => e.label).filter(Boolean))].join(' / ');
+    if (colors.length) style = ` style="background:${splitBg(colors)}"`;
+    else if (dow === 0 || dow === 6) cls += ' wk';
+    if (o.brk.length) cls += ' brk';
+    tip = `${DOW3[dow]} ${MON3[m]} ${d}${label ? ': ' + label : ''}${o.brk.length ? ' (school break)' : ''}`;
   } else {
-    bg = splitBg([...new Set(o.wo.map(w => w.type))].map(catColor));
+    const lv = heatLevel(o);
+    if (lv) cls += ' h' + lv;
+    const mins = Math.round(dayMinutes(o));
+    tip = `${DOW3[dow]} ${MON3[m]} ${d}: ` + (o.wo.length ? `${fmtMin(mins)}, ${[...new Set(o.wo.map(w => w.type))].join(' + ')}` : 'no workouts');
   }
-  const cls = 'd' + (k === todayK ? ' today' : '') + (k === state.sel ? ' sel' : '');
-  const aria = `${DOW3[dow]} ${MONTHS[m]} ${d}${label ? ', ' + label : ''}`;
-  return `<div class="${cls}" data-k="${k}" role="button" tabindex="0" aria-label="${esc(aria)}">` +
-    `<div class="dh ${hc}"><span>${(narrow ? DOW2 : DOW3)[dow]}</span><span>${d}</span></div>` +
-    `<div class="db"${bg ? ` style="background:${bg}"` : ''}><span>${esc(label)}</span></div></div>`;
+  if (k === todayK) cls += ' today';
+  if (k === state.sel) cls += ' sel';
+
+  const inner = showText
+    ? `<span class="n${d === 1 ? ' first' : ''}">${d}</span>` + (label ? `<span class="l">${esc(label)}</span>` : '')
+    : '';
+  return `<div class="${cls}"${style} data-k="${k}" role="button" tabindex="0" title="${esc(tip)}" aria-label="${esc(tip)}">${inner}</div>`;
+}
+
+function fmtMin(m) {
+  if (m < 60) return m + ' min';
+  const hh = Math.floor(m / 60), mm = m % 60;
+  return hh + ' hr' + (mm ? ' ' + mm + ' min' : '');
 }
 
 function groupCats(group) {
@@ -303,8 +370,12 @@ function groupCats(group) {
 }
 
 function renderLegend() {
-  const cats = groupCats(state.view === 'outlook' ? 'event' : 'workout');
-  $('legend').innerHTML = cats.map(c => `<span class="chip" style="background:${esc(c.color)}">${esc(c.name)}</span>`).join('');
+  if (state.view === 'outlook') {
+    $('legend').innerHTML = groupCats('event').map(c => `<span class="chip" style="background:${esc(c.color)}">${esc(c.name)}</span>`).join('');
+  } else {
+    $('legend').innerHTML = `<div class="heat">Less <i title="No workouts"></i><i class="h1" title="Under 30 min"></i><i class="h2" title="30 to 60 min"></i><i class="h3" title="1 to 2 hr"></i><i class="h4" title="2 hr or more"></i> More
+      <span class="cap">Shaded by total workout time per day: under 30 min, 30–60 min, 1–2 hr, 2 hr+</span></div>`;
+  }
 }
 
 function renderSummary() {
@@ -312,12 +383,13 @@ function renderSummary() {
   if (state.view !== 'activity' || !state.data) { el.innerHTML = ''; return; }
   const pre = state.year + '-';
   const days = new Set(), counts = {};
+  let mins = 0;
   (state.data.workouts || []).forEach(w => {
     if (!String(w.date).startsWith(pre)) return;
-    days.add(w.date); counts[w.type] = (counts[w.type] || 0) + 1;
+    days.add(w.date); counts[w.type] = (counts[w.type] || 0) + 1; mins += Number(w.min) || 0;
   });
   const parts = groupCats('workout').map(c => `${esc(c.name)} <b>${counts[c.name] || 0}</b>`);
-  el.innerHTML = `Active days <b>${days.size}</b>&ensp;` + parts.join('&ensp;');
+  el.innerHTML = `Active days <b>${days.size}</b>&ensp;Total <b>${Math.round(mins / 60)} hr</b>&ensp;` + parts.join('&ensp;');
 }
 
 /* ---------- day sheet ---------- */
